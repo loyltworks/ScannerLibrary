@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.jetbrains.kotlin.android)
+    id("maven-publish")
 }
 
 android {
@@ -23,6 +24,20 @@ android {
             )
         }
     }
+
+    afterEvaluate {
+        publishing {
+            publications {
+                create<MavenPublication>("release") {
+                    from(components["release"])
+                    groupId = "com.github.loyltworks"
+                    artifactId = "LwsScanner"
+                    version = "1.0.3"
+                }
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
