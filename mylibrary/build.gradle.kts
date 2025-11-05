@@ -32,7 +32,7 @@ android {
                     from(components["release"])
                     groupId = "com.github.loyltworks"
                     artifactId = "LwsScanner"
-                    version = "1.0.3"
+                    version = "1.0.4"
                 }
             }
         }
@@ -55,4 +55,14 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+
+
+
+    //camera x and mlkit libary for scanning qr code
+    implementation ("androidx.camera:camera-camera2:1.4.0")
+    implementation ("androidx.camera:camera-lifecycle:1.4.0")
+    implementation ("androidx.camera:camera-core:1.4.0")
+    implementation ("androidx.camera:camera-view:1.4.0")
+    implementation ("androidx.camera:camera-video:1.4.0")
+    implementation ("com.google.mlkit:barcode-scanning:17.3.0")
 }
