@@ -1,4 +1,4 @@
-package com.loyaltyworks.fleetguardhumsafar.utils.qrcodescanner
+package com.loyltworks.mylibrary.qrcodescanner
 
 interface QrCodeScannerListner {
 
