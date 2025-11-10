@@ -60,9 +60,7 @@ class MainActivity : AppCompatActivity(), QrCodeScannerListner {
 
 
 
-        Handler().postDelayed({
-           QrCodeScanner.cameraSelect(QrCodeScanner.FRONTCAMERA,this)
-        },3000)
+
     }
 
     override fun onSuccess(qrCode: String) {
