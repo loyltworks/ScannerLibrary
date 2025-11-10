@@ -209,12 +209,14 @@ object QrCodeScanner {
     }
 
     // Switch camera
-    fun cameraSelect(camera:Int,context: Context) {
-     if (camera == FRONTCAMERA) {
+    fun cameraSelect(camera: Int, context: Context) {
+        cameraSelector = if (camera == FRONTCAMERA) {
             CameraSelector.DEFAULT_FRONT_CAMERA
         } else {
             CameraSelector.DEFAULT_BACK_CAMERA
         }
+
+        // Restart camera with the new selector
         startCamera(context, context as AppCompatActivity)
     }
     // Stop scanner
@@ -228,6 +230,7 @@ object QrCodeScanner {
         cameraProvider = null
         cameraControl = null
         cameraInfo = null
+        cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
         isRunning = false
         isPaused = false
