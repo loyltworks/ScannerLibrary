@@ -10,7 +10,6 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.util.Size
-import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.*
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
@@ -48,9 +47,8 @@ object QrCodeScanner {
     private var cameraControl: CameraControl? = null
     private var cameraInfo: CameraInfo? = null
 
-    var FRONTCAMERA=101
-     var BACKCAMERA=102
-
+    var FRONTCAMERA = 101
+    var BACKCAMERA = 102
 
     private var cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
@@ -66,21 +64,23 @@ object QrCodeScanner {
     private var isPaused = false
     private var isScanning = false
 
-    // Permissions check
     fun allPermissionsGranted(context: Context) =
         REQUIRED_PERMISSIONS.all {
             ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
         }
 
-    // Start scanner
     fun startScanner(
         context: Context,
         preview: PreviewView,
         scannerListener: QrCodeScannerListner
     ): QrCodeScanner {
-        stopScanner() // reset everything before new start
+
+        stopScanner()
+
         previewView = preview
         listener = scannerListener
+        isPaused = false
+        isScanning = false
 
         if (!allPermissionsGranted(context)) {
             ActivityCompat.requestPermissions(
@@ -91,7 +91,13 @@ object QrCodeScanner {
             return this
         }
 
-        startCamera(context, context as AppCompatActivity)
+        val owner = context as? LifecycleOwner
+        if (owner == null) {
+            Log.e(TAG, "LifecycleOwner is null — scanner cannot start")
+            return this
+        }
+
+        startCamera(context, owner)
         return this
     }
 
@@ -104,13 +110,17 @@ object QrCodeScanner {
         val previewUseCase = Preview.Builder()
             .setTargetResolution(previewResolution)
             .build()
-            .also { it.surfaceProvider = previewView?.surfaceProvider }
+
+        previewUseCase.setSurfaceProvider(previewView?.surfaceProvider)
 
         val analysisUseCase = ImageAnalysis.Builder()
             .setTargetResolution(analyzerResolution)
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build()
-            .also { it.setAnalyzer(cameraExecutor!!, QrCodeScanner::processImageProxy) }
+
+        analysisUseCase.setAnalyzer(cameraExecutor!!) { proxy ->
+            processImageProxy(proxy)
+        }
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
@@ -129,38 +139,45 @@ object QrCodeScanner {
                 cameraControl = camera?.cameraControl
                 cameraInfo = camera?.cameraInfo
 
-                try { cameraControl?.setZoomRatio(defaultZoom) } catch (_: Exception) { }
+                try { cameraControl?.setZoomRatio(defaultZoom) } catch (_: Exception) {}
 
                 startRefocusLoop()
                 isRunning = true
-                log("Camera started: Preview=$previewResolution, Analyzer=$analyzerResolution")
+                log("Camera started")
+
             } catch (e: Exception) {
                 loge("Camera bind failed: ${e.message}")
             }
         }, ContextCompat.getMainExecutor(context))
     }
 
-    // Refocus loop
     private fun startRefocusLoop() {
         previewView?.postDelayed(object : Runnable {
             override fun run() {
-                if (cameraControl == null || cameraInfo == null || previewView == null) return
                 try {
+                    if (cameraControl == null || previewView == null) return
+
                     val point = previewView!!.meteringPointFactory.createPoint(
                         previewView!!.width / 2f,
                         previewView!!.height / 2f
                     )
+
                     val action = FocusMeteringAction.Builder(
-                        point, FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
-                    ).setAutoCancelDuration(2, TimeUnit.SECONDS).build()
+                        point,
+                        FocusMeteringAction.FLAG_AF or FocusMeteringAction.FLAG_AE
+                    )
+                        .setAutoCancelDuration(2, TimeUnit.SECONDS)
+                        .build()
+
                     cameraControl!!.startFocusAndMetering(action)
-                } catch (_: Exception) { }
+
+                } catch (_: Exception) {}
+
                 previewView?.postDelayed(this, 2000)
             }
         }, 1000)
     }
 
-    // Image analysis
     @ExperimentalGetImage
     @SuppressLint("UnsafeOptInUsageError")
     private fun processImageProxy(imageProxy: ImageProxy) {
@@ -170,14 +187,20 @@ object QrCodeScanner {
             return
         }
 
-        val mediaImage = imageProxy.image
-        if (mediaImage == null || isPaused || isScanning) {
+        val mediaImage = imageProxy.image ?: run {
             imageProxy.close()
             return
         }
 
-        val inputImage = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
+        if (isPaused || isScanning) {
+            imageProxy.close()
+            return
+        }
+
         isScanning = true
+
+        val inputImage =
+            InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
 
         barcodeScanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
@@ -186,7 +209,7 @@ object QrCodeScanner {
                 if (barcodes.isNotEmpty()) {
                     barcodes.first().rawValue?.let { qr ->
                         listener?.onSuccess(qr)
-                        try { playBeep(previewView!!.context) } catch (_: Exception) { }
+                        try { playBeep(previewView!!.context) } catch (_: Exception) {}
                     }
                 } else {
                     listener?.onFailed("No QR found")
@@ -198,43 +221,40 @@ object QrCodeScanner {
             .addOnCompleteListener {
                 try { imageProxy.close() } catch (_: Exception) {}
 
-                if (previewView != null) {
-                    previewView?.postDelayed({ isScanning = false }, scanDelay)
-                }
+                previewView?.postDelayed({
+                    isScanning = false
+                }, scanDelay)
             }
     }
 
-
-
-    // Play beep
     private fun playBeep(context: Context) {
         try {
-            val mediaPlayer = MediaPlayer.create(context, R.raw.beeps) ?: return
-            mediaPlayer.start()
+            val mp = MediaPlayer.create(context, R.raw.beeps) ?: return
+            mp.start()
+
             Handler(Looper.getMainLooper()).postDelayed({
-                if (mediaPlayer.isPlaying) {
-                    try { mediaPlayer.stop() } catch (e: IllegalStateException) { loge("Beep stop error: ${e.message}") }
-                }
-                mediaPlayer.release()
+                try { mp.stop() } catch (_: Exception) {}
+                mp.release()
             }, 600)
-        } catch (e: Exception) { loge("Beep error: ${e.message}") }
+
+        } catch (_: Exception) {}
     }
 
-    // Switch camera
     fun cameraSelect(camera: Int, context: Context) {
-        cameraSelector = if (camera == FRONTCAMERA) {
+        cameraSelector = if (camera == FRONTCAMERA)
             CameraSelector.DEFAULT_FRONT_CAMERA
-        } else {
+        else
             CameraSelector.DEFAULT_BACK_CAMERA
-        }
 
         stopScanner()
-        startCamera(context, context as AppCompatActivity)
+
+        val owner = context as? LifecycleOwner ?: return
+        startCamera(context, owner)
     }
-    // Stop scanner
+
     fun stopScanner() {
-        try { isPaused = true } catch (_: Exception) {}
-        try { isScanning = true } catch (_: Exception) {}
+        isPaused = true
+        isScanning = false
 
         try { cameraProvider?.unbindAll() } catch (_: Exception) {}
         try { cameraExecutor?.shutdownNow() } catch (_: Exception) {}
@@ -248,20 +268,16 @@ object QrCodeScanner {
         isRunning = false
     }
 
+    fun pauseScan() { isPaused = true }
+    fun resumeScan() { isPaused = false }
 
-    // Pause / Resume
-    fun pauseScan() { isPaused = true; log("Scan paused") }
-    fun resumeScan() { isPaused = false; log("Scan resumed") }
-
-    // Torch toggle
     fun toggleTorch() {
         try {
-            val state = cameraInfo?.torchState?.value
-            cameraControl?.enableTorch(state != TorchState.ON)
-        } catch (_: Exception) { loge("Torch error") }
+            val isOn = cameraInfo?.torchState?.value == TorchState.ON
+            cameraControl?.enableTorch(!isOn)
+        } catch (_: Exception) {}
     }
 
-    // Change resolutions
     fun setResolution(preview: Size, analyzer: Size): QrCodeScanner {
         previewResolution = preview
         analyzerResolution = analyzer
@@ -271,11 +287,6 @@ object QrCodeScanner {
     fun scanDelayTime(ms: Long): QrCodeScanner { scanDelay = ms; return this }
     fun logPrint(enable: Boolean): QrCodeScanner { printLog = enable; return this }
 
-
-
-
-
-    // Logging
     private fun log(msg: String) { if (printLog) Log.d(TAG, msg) }
     private fun loge(msg: String) { if (printLog) Log.e(TAG, msg) }
 }
