@@ -164,6 +164,12 @@ object QrCodeScanner {
     @ExperimentalGetImage
     @SuppressLint("UnsafeOptInUsageError")
     private fun processImageProxy(imageProxy: ImageProxy) {
+
+        if (previewView == null || listener == null) {
+            imageProxy.close()
+            return
+        }
+
         val mediaImage = imageProxy.image
         if (mediaImage == null || isPaused || isScanning) {
             imageProxy.close()
@@ -175,23 +181,29 @@ object QrCodeScanner {
 
         barcodeScanner.process(inputImage)
             .addOnSuccessListener { barcodes ->
+                if (previewView == null || listener == null) return@addOnSuccessListener
+
                 if (barcodes.isNotEmpty()) {
-                    val barcode = barcodes.first()
-                    barcode.rawValue?.let { qr ->
-                        listener!!.onSuccess(qr)
-                        log("QR Detected: $qr")
+                    barcodes.first().rawValue?.let { qr ->
+                        listener?.onSuccess(qr)
                         try { playBeep(previewView!!.context) } catch (_: Exception) { }
                     }
                 } else {
-                    try { listener!!.onFailed("No QR found") } catch (_: Exception) { }
+                    listener?.onFailed("No QR found")
                 }
             }
-            .addOnFailureListener { e -> listener?.onFailed("Scan failed: ${e.message}") }
+            .addOnFailureListener { e ->
+                listener?.onFailed("Scan failed: ${e.message}")
+            }
             .addOnCompleteListener {
-                imageProxy.close()
-                previewView?.postDelayed({ isScanning = false }, scanDelay)
+                try { imageProxy.close() } catch (_: Exception) {}
+
+                if (previewView != null) {
+                    previewView?.postDelayed({ isScanning = false }, scanDelay)
+                }
             }
     }
+
 
 
     // Play beep
@@ -216,28 +228,26 @@ object QrCodeScanner {
             CameraSelector.DEFAULT_BACK_CAMERA
         }
 
-        // Restart camera with the new selector
+        stopScanner()
         startCamera(context, context as AppCompatActivity)
     }
     // Stop scanner
     fun stopScanner() {
-        if (!isRunning) return
-        try { cameraProvider?.unbindAll(); log("Camera use cases unbound") } catch (e: Exception) { loge("Failed to unbind camera: ${e.message}") }
-        try { cameraExecutor?.shutdownNow(); cameraExecutor = null } catch (e: Exception) { loge("Camera executor shutdown error: ${e.message}") }
+        try { isPaused = true } catch (_: Exception) {}
+        try { isScanning = true } catch (_: Exception) {}
+
+        try { cameraProvider?.unbindAll() } catch (_: Exception) {}
+        try { cameraExecutor?.shutdownNow() } catch (_: Exception) {}
 
         previewView = null
         listener = null
         cameraProvider = null
         cameraControl = null
         cameraInfo = null
-        cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
 
         isRunning = false
-        isPaused = false
-        isScanning = false
-
-        log("Scanner stopped")
     }
+
 
     // Pause / Resume
     fun pauseScan() { isPaused = true; log("Scan paused") }
