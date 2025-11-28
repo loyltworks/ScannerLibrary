@@ -272,10 +272,11 @@ object QrCodeScanner {
     fun resumeScan() { isPaused = false }
 
     fun toggleTorch() {
-        try {
-            val isOn = cameraInfo?.torchState?.value == TorchState.ON
-            cameraControl?.enableTorch(!isOn)
-        } catch (_: Exception) {}
+        if (cameraInfo!!.torchState.value == TorchState.ON) {
+            cameraControl!!.enableTorch(false)
+        } else {
+            cameraControl!!.enableTorch(true)
+        }
     }
 
     fun setResolution(preview: Size, analyzer: Size): QrCodeScanner {
