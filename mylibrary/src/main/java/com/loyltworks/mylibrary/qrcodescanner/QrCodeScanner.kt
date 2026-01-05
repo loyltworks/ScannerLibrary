@@ -34,6 +34,7 @@ object QrCodeScanner {
 
     // Config
     private var printLog = false
+    private var playBeep = false
     private var scanDelay: Long = 300L
     private var previewResolution = Size(1280, 720)
     private var analyzerResolution = Size(1280, 720)
@@ -209,7 +210,10 @@ object QrCodeScanner {
                 if (barcodes.isNotEmpty()) {
                     barcodes.first().rawValue?.let { qr ->
                         listener?.onSuccess(qr)
-                        try { playBeep(previewView!!.context) } catch (_: Exception) {}
+                        if(playBeep){
+                            try { playBeep(previewView!!.context) } catch (_: Exception) {}
+                        }
+
                     }
                 } else {
                     listener?.onFailed("No QR found")
@@ -287,6 +291,8 @@ object QrCodeScanner {
 
     fun scanDelayTime(ms: Long): QrCodeScanner { scanDelay = ms; return this }
     fun logPrint(enable: Boolean): QrCodeScanner { printLog = enable; return this }
+    fun playSound(isPlay: Boolean): QrCodeScanner { playBeep = isPlay; return this }
+
 
     private fun log(msg: String) { if (printLog) Log.d(TAG, msg) }
     private fun loge(msg: String) { if (printLog) Log.e(TAG, msg) }
